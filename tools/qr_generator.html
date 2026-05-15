@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure QR Generator</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230ea5e9'/><path fill='%23ffffff' d='M25 25h15v15h-15zM60 25h15v15h-15zM25 60h15v15h-15zM45 45h10v10h-10zM45 60h10v15h-10zM60 45h15v10h-15z'/></svg>">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+    <script src="https://unpkg.com/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
+
+    <style>
+        /* === โหมดสว่าง (Light Mode) === */
+        :root {
+            --primary: #0ea5e9; 
+            --primary-hover: #0284c7;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --input-bg: #ffffff;
+            --grid-color: rgba(14, 165, 233, 0.7);
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            --btn-text: #ffffff;
+            --transition: all 0.3s ease;
+        }
+
+        /* === โหมดมืด (Dark Mode) === */
+        body.dark-mode {
+            --primary: #38bdf8;
+            --primary-hover: #7dd3fc;
+            --bg: #0f172a; 
+            --surface: #1e293b;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --input-bg: #0f172a;
+            --grid-color: rgba(56, 189, 248, 0.7);
+            --glass-bg: rgba(30, 41, 59, 0.85);
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            --btn-text: #0f172a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); line-height: 1.6; transition: background-color 0.3s, color 0.3s; }
+
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 12px; }
+        .header-title { min-width: 0; }
+        .header-title h1 { font-size: 1.6rem; color: var(--text); margin-bottom: 4px; font-weight: 700; letter-spacing: -0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .header-title h1 span { color: var(--primary); }
+        .header-title p { color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .theme-toggle-btn { flex-shrink: 0; }
+        
+        .theme-toggle-btn {
+            background: var(--surface); color: var(--text); border: 1px solid var(--border);
+            padding: 8px 16px; border-radius: 20px; cursor: pointer; font-weight: 600;
+            display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow); transition: var(--transition);
+        }
+        .theme-toggle-btn:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-2px); }
+
+        .app-container { display: flex; max-width: 1200px; margin: 0 auto; min-height: 100vh; flex-direction: column; }
+        .controls-panel { flex: 1; padding: 20px; padding-bottom: 110px; }
+
+        /* Desktop preview panel */
+        .preview-panel { display: none; }
+
+        /* ===== MOBILE: Bottom bar ===== */
+        #mobile-bar {
+            display: flex; align-items: center; position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+            background: var(--glass-bg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border-top: 1px solid var(--border); padding: 10px 16px; gap: 12px;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.12);
+        }
+        #mobile-qr-thumb {
+            width: 60px; height: 60px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+            border: 2px solid var(--primary); background: white; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; position: relative;
+        }
+        #mobile-qr-thumb::after {
+            content: '👁'; position: absolute; bottom: 1px; right: 2px; font-size: 10px; line-height: 1;
+        }
+        #mobile-qr-thumb svg, #mobile-qr-thumb canvas { width: 56px !important; height: 56px !important; max-width: 56px !important; max-height: 56px !important; }
+        #mobile-bar-actions { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+        #mobile-bar-actions select { padding: 7px 8px; font-size: 0.82rem; margin: 0; border-radius: 7px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); }
+        #mobile-bar-btns { display: flex; gap: 8px; }
+        #mobile-bar-btns .btn { flex: 1; padding: 9px 4px; font-size: 0.82rem; margin: 0; border-radius: 8px; }
+
+        /* Mobile sheet overlay */
+        #mobile-sheet-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 300;
+            backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+        }
+        #mobile-sheet-overlay.open { display: block; animation: fadeIn 0.2s ease; }
+        #mobile-sheet {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 400;
+            background: var(--surface); border-radius: 20px 20px 0 0;
+            padding: 0 20px 30px; max-height: 80vh; overflow-y: auto;
+            transform: translateY(100%); transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+            border-top: 1px solid var(--border);
+        }
+        #mobile-sheet.open { transform: translateY(0); }
+        #sheet-header { position: sticky; top: 0; background: var(--surface); padding: 12px 0 8px; z-index: 1; }
+        #mobile-sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 12px; }
+        #sheet-qr-wrap { display: flex; justify-content: center; margin-bottom: 16px; }
+        #sheet-export-wrapper {
+            display: inline-flex; flex-direction: column; align-items: center;
+            padding: 16px; border-radius: 16px; box-shadow: var(--shadow); transition: var(--transition);
+            background: white;
+        }
+        #sheet-qr-preview-container { position: relative; width: 220px; height: 220px; display: flex; justify-content: center; align-items: center; }
+        #sheet-qr-preview { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        #sheet-qr-preview svg, #sheet-qr-preview canvas { max-width: 220px !important; max-height: 220px !important; width: 100% !important; height: 100% !important; }
+
+        .card { background: var(--surface); padding: 25px; border-radius: 16px; box-shadow: var(--shadow); margin-bottom: 20px; transition: var(--transition); border: 1px solid var(--border); }
+        h2 { margin-bottom: 15px; font-size: 1.2rem; border-bottom: 2px solid var(--border); padding-bottom: 10px; color: var(--text);}
+        h3 { font-size: 1rem; margin: 15px 0 10px; color: var(--text-muted); }
+        label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem; color: var(--text); }
+        
+        input[type="text"], input[type="email"], input[type="tel"], select, textarea {
+            width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 8px;
+            background-color: var(--input-bg); color: var(--text); transition: var(--transition); outline: none;
+        }
+        input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2); }
+        input[type="range"] { width: 100%; margin-bottom: 15px; cursor: pointer; accent-color: var(--primary); }
+        
+        .flex-row { display: flex; gap: 15px; align-items: center; margin-bottom: 15px; }
+        .flex-col { flex: 1; }
+
+        .tabs { display: flex; overflow-x: auto; gap: 10px; margin-bottom: 20px; padding-bottom: 5px; scrollbar-width: none; }
+        .tab-btn {
+            padding: 10px 18px; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+            border-radius: 10px; cursor: pointer; white-space: nowrap; font-weight: 600; transition: var(--transition);
+        }
+        .tab-btn:hover { border-color: var(--primary); color: var(--text); }
+        .tab-btn.active { background: var(--primary); color: var(--btn-text); border-color: var(--primary); box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        #map-container { height: 300px; border-radius: 12px; margin-bottom: 15px; z-index: 1; border: 1px solid var(--border); }
+        input[type="radio"][name="map-provider"]:checked + span,
+        label:has(input[name="map-provider"]:checked) { border-color: var(--primary) !important; color: var(--text); background: rgba(14,165,233,0.07); }
+
+        #export-wrapper {
+            background: var(--surface); padding: 20px; border-radius: 16px; box-shadow: var(--shadow);
+            margin-bottom: 15px; display: inline-flex; flex-direction: column; align-items: center; width: 100%; transition: var(--transition);
+        }
+        
+        #qr-preview-container { position: relative; width: 250px; height: 250px; display: flex; justify-content: center; align-items: center; }
+        
+        /* ล็อกการแสดงผล SVG ไม่ให้หลุดกรอบ */
+        #qr-preview { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        #qr-preview svg, #qr-preview canvas { max-width: 250px !important; max-height: 250px !important; width: 100% !important; height: 100% !important; }
+
+        #grid-overlay {
+            position: absolute; pointer-events: none; opacity: 0; transition: opacity 0.4s ease-out;
+            border: 2px dashed var(--grid-color); z-index: 10;
+        }
+        #grid-overlay::before, #grid-overlay::after { content: ''; position: absolute; background: var(--grid-color); box-shadow: 0 0 5px var(--primary); }
+        #grid-overlay::before { top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%); }
+        #grid-overlay::after { left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%); }
+        #grid-overlay.show { opacity: 1; transition: opacity 0.1s; }
+
+        .btn {
+            width: 100%; padding: 12px; background: var(--primary); color: var(--btn-text);
+            border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: bold; margin-bottom: 10px;
+            transition: var(--transition); box-shadow: 0 4px 12px rgba(14, 165, 233, 0.2);
+        }
+        .btn:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 6px 15px rgba(14, 165, 233, 0.3); }
+        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); box-shadow: none; }
+        .btn-outline:hover { background: var(--primary); color: var(--btn-text); }
+
+        .history-item {
+            padding: 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 0.85rem; 
+            display: flex; justify-content: space-between; align-items: center; background: var(--surface); transition: var(--transition);
+            gap: 12px; /* เพิ่มช่องว่างระหว่างข้อความกับปุ่ม */
+        }
+        .history-item:hover { border-color: var(--primary); }
+
+        @media (min-width: 768px) {
+            #mobile-bar { display: none !important; }
+            #mobile-sheet-overlay, #mobile-sheet { display: none !important; }
+            .app-container { flex-direction: row; padding: 20px; gap: 25px; }
+            .controls-panel { padding-bottom: 20px; }
+            .preview-panel {
+                display: flex; flex-direction: column; align-items: center;
+                width: 380px; background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+                border-radius: 16px; border-bottom: none; padding: 20px;
+                height: fit-content; top: 20px; position: sticky;
+                box-shadow: var(--shadow); border: 1px solid var(--border); transition: var(--transition);
+            }
+        }
+
+        /* ===== MOBILE ONLY: scale down typography & spacing ===== */
+        @media (max-width: 767px) {
+            .header-title h1   { font-size: 1.15rem; }
+            .header-title p    { font-size: 0.75rem; }
+            .card              { padding: 18px; }
+            h2                 { font-size: 1rem; }
+            h3                 { font-size: 0.85rem; margin: 10px 0 8px; }
+            label              { font-size: 0.82rem; margin-bottom: 4px; }
+            input[type="text"], input[type="email"], input[type="tel"], select, textarea
+                               { padding: 9px; font-size: 0.88rem; margin-bottom: 10px; }
+            .btn               { padding: 10px; font-size: 0.9rem; }
+            .tabs              { gap: 6px; }
+            .tab-btn           { padding: 8px 12px; font-size: 0.82rem; }
+            .flex-row          { gap: 10px; }
+            /* Logo label wrapping fix */
+            .flex-col label    { font-size: 0.78rem; }
+            /* Shape selects 3-col — tighten */
+            #shape-dots, #shape-eye-frame, #shape-eye-ball { font-size: 0.8rem; padding: 8px 4px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    
+    <main class="controls-panel">
+        <div class="header-container">
+            <div class="header-title">
+                <h1>🔒 <span>Secure</span> QR Generator</h1>
+                <p>เครื่องมือสร้างคิวอาร์โค้ดระดับโปร ปรับแต่งอิสระ และปลอดภัย 100%</p>
+            </div>
+            <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">🌙 Dark</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('url', this)">🌐 URL / Text</button>
+            <button class="tab-btn" onclick="switchTab('vcard', this)">📇 vCard</button>
+            <button class="tab-btn" onclick="switchTab('wifi', this)">📶 Wi-Fi</button>
+            <button class="tab-btn" onclick="switchTab('email', this)">✉️ Email</button>
+            <button class="tab-btn" onclick="switchTab('geo', this)">📍 แผนที่</button>
+        </div>
+
+        <div class="card">
+            <div id="tab-url" class="tab-content active">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <h2 style="margin-bottom:0; border-bottom: none; padding-bottom: 0;">ข้อมูล URL หรือ ข้อความ</h2>
+                    <button onclick="pasteFromClipboard()" class="btn btn-outline" style="width: auto; padding: 6px 14px; font-size: 0.82rem; margin: 0; border-radius: 8px; white-space: nowrap; flex-shrink: 0;">📋 วาง</button>
+                </div>
+                <textarea id="input-url" rows="4" placeholder="เช่น https://www.google.com หรือพิมพ์ข้อความที่นี่..." oninput="updateQR()"></textarea>
+            </div>
+
+            <div id="tab-vcard" class="tab-content">
+                <h2>ข้อมูลนามบัตร (vCard)</h2>
+                <div class="flex-row">
+                    <div class="flex-col"><label>ชื่อ</label><input type="text" id="vc-fname" oninput="updateQR()"></div>
+                    <div class="flex-col"><label>นามสกุล</label><input type="text" id="vc-lname" oninput="updateQR()"></div>
+                </div>
+                <label>เบอร์โทรศัพท์</label><input type="tel" id="vc-phone" oninput="updateQR()">
+                <label>อีเมล</label><input type="email" id="vc-email" oninput="updateQR()">
+                <label>บริษัท</label><input type="text" id="vc-org" oninput="updateQR()">
+            </div>
+
+            <div id="tab-wifi" class="tab-content">
+                <h2>ตั้งค่า Wi-Fi</h2>
+                <label>ชื่อเครือข่าย (SSID)</label><input type="text" id="wifi-ssid" oninput="updateQR()">
+                <label>รหัสผ่าน</label><input type="text" id="wifi-pass" oninput="updateQR()">
+                <label>ระบบความปลอดภัย</label>
+                <select id="wifi-type" onchange="updateQR()">
+                    <option value="WPA">WPA/WPA2</option><option value="WEP">WEP</option><option value="nopass">ไม่มีรหัสผ่าน</option>
+                </select>
+                <div class="flex-row"><input type="checkbox" id="wifi-hidden" onchange="updateQR()" style="accent-color: var(--primary); width: auto;"><label style="margin:0;">เครือข่ายที่ซ่อนอยู่</label></div>
+            </div>
+
+            <div id="tab-email" class="tab-content">
+                <h2>ส่งอีเมล</h2>
+                <label>ส่งถึง</label><input type="email" id="em-to" oninput="updateQR()">
+                <label>หัวข้อ</label><input type="text" id="em-sub" oninput="updateQR()">
+                <label>เนื้อหา</label><textarea id="em-body" rows="3" oninput="updateQR()"></textarea>
+            </div>
+
+            <div id="tab-geo" class="tab-content">
+                <h2>พิกัดแผนที่ (Geolocation)</h2>
+                <div id="map-container"></div>
+                <div class="flex-row">
+                    <div class="flex-col"><label>Latitude</label><input type="text" id="geo-lat" readonly style="background: var(--bg);"></div>
+                    <div class="flex-col"><label>Longitude</label><input type="text" id="geo-lng" readonly style="background: var(--bg);"></div>
+                </div>
+                <label style="margin-bottom: 8px;">เปิดด้วยแอปแผนที่</label>
+                <div style="display: flex; gap: 12px; margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 6px; font-weight: 400; cursor: pointer; padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px; flex: 1; transition: var(--transition);" id="label-apple">
+                        <input type="radio" name="map-provider" value="apple" onchange="updateQR()" style="accent-color: var(--primary); width: auto; margin: 0;">
+                        🍎 Apple Maps <span style="font-size: 0.75rem; color: var(--text-muted);">(iOS)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; font-weight: 400; cursor: pointer; padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px; flex: 1; transition: var(--transition);" id="label-google">
+                        <input type="radio" name="map-provider" value="google" checked onchange="updateQR()" style="accent-color: var(--primary); width: auto; margin: 0;">
+                        🗺️ Google Maps <span style="font-size: 0.75rem; color: var(--text-muted);">(ทุก platform)</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🎨 ปรับแต่งดีไซน์</h2>
+            
+            <label>ระยะขอบภาพ (Margin: <span id="margin-label">4</span>%)</label>
+            <input type="range" id="qr-margin" min="0" max="25" value="4" oninput="updateQR()">
+
+            <h3>รูปร่าง (Shapes)</h3>
+            <div class="flex-row">
+                <div class="flex-col">
+                    <label>จุด (Dots)</label>
+                    <select id="shape-dots" onchange="updateQR()">
+                        <option value="square">สี่เหลี่ยม</option><option value="dots">วงกลม</option><option value="rounded">ขอบมน</option>
+                    </select>
+                </div>
+                <div class="flex-col">
+                    <label>กรอบตา (Frame)</label>
+                    <select id="shape-eye-frame" onchange="updateQR()">
+                        <option value="square">สี่เหลี่ยม</option><option value="dot">วงกลม</option><option value="rounded">ขอบมน</option>
+                    </select>
+                </div>
+                <div class="flex-col">
+                    <label>จุดตา (Ball)</label>
+                    <select id="shape-eye-ball" onchange="updateQR()">
+                        <option value="square">สี่เหลี่ยม</option><option value="dot">วงกลม</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3>สี (Colors)</h3>
+            <div class="flex-row">
+                <div class="flex-col">
+                    <label>สี QR Code</label>
+                    <div style="border: 2px solid var(--border); border-radius: 10px; padding: 4px; background: var(--input-bg); transition: var(--transition);" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+                        <input type="color" id="color-dots" value="#000000" onchange="updateQR()" style="width:100%; height:42px; border:none; border-radius: 6px; cursor: pointer; background: transparent; display:block;">
+                    </div>
+                </div>
+                <div class="flex-col">
+                    <label>สีพื้นหลัง</label>
+                    <div style="border: 2px solid var(--border); border-radius: 10px; padding: 4px; background: var(--input-bg); transition: var(--transition);" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+                        <input type="color" id="color-bg" value="#ffffff" onchange="updateQR()" style="width:100%; height:42px; border:none; border-radius: 6px; cursor: pointer; background: transparent; display:block;">
+                    </div>
+                </div>
+            </div>
+            <div class="flex-row">
+                <input type="checkbox" id="bg-transparent" onchange="updateQR()" style="accent-color: var(--primary); width: auto;"><label style="margin:0;">พื้นหลังโปร่งใส</label>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🖼️ โลโก้</h2>
+            <label>อัปโหลดรูปตรงกลาง</label>
+            <input type="file" id="logo-upload" accept="image/png, image/jpeg" style="margin-bottom: 10px; color: var(--text);">
+            <div class="flex-row" style="margin-bottom: 20px;">
+                <input type="checkbox" id="logo-monotone" onchange="applyLogo()" style="accent-color: var(--primary); width: auto;"><label style="margin:0;">แปลงเป็นขาวดำ</label>
+            </div>
+            
+            <div class="flex-row">
+                <div class="flex-col">
+                    <label>ขนาดโลโก้ (Size: <span id="logo-size-label">40</span>%)</label>
+                    <input type="range" id="logo-size" min="10" max="50" value="40" oninput="updateQR()">
+                </div>
+                <div class="flex-col">
+                    <label>ช่องว่างโลโก้ (Gap: <span id="logo-gap-label">2</span>%)</label>
+                    <input type="range" id="logo-gap" min="0" max="10" value="2" oninput="updateQR()">
+                </div>
+            </div>
+            
+            <button onclick="clearLogo()" class="btn btn-outline" style="padding: 8px; margin-top: 15px; border-radius: 8px;">ลบโลโก้</button>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">
+                <h2 style="border: none; margin: 0; padding: 0;">🕒 ประวัติการสร้าง</h2>
+                <button onclick="clearHistory()" class="btn btn-outline" style="width: auto; padding: 5px 12px; font-size: 0.8rem; margin: 0; color: #ef4444; border-color: #ef4444; border-radius: 6px;">ลบประวัติ</button>
+            </div>
+            <div id="history-list" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
+                </div>
+        </div>
+
+    </main>
+
+    <!-- DESKTOP: sidebar preview panel -->
+    <aside class="preview-panel">
+        <div id="export-wrapper">
+            <div id="qr-preview-container">
+                <div id="qr-preview"></div>
+                <div id="grid-overlay"></div>
+            </div>
+        </div>
+        <div style="width: 100%;">
+            <label>ขนาดดาวน์โหลด (PNG)</label>
+            <select id="download-size" style="margin-bottom: 20px;">
+                <option value="512">512 x 512 px</option><option value="1024">1024 x 1024 px</option>
+                <option value="2048">2048 x 2048 px</option><option value="4096">4096 x 4096 px</option>
+                <option value="8192">8192 x 8192 px</option>
+            </select>
+            <button class="btn" onclick="downloadQR('png')">⬇️ ดาวน์โหลด PNG</button>
+            <button class="btn btn-outline" onclick="downloadQR('svg')">⬇️ ดาวน์โหลด SVG (Vector)</button>
+        </div>
+    </aside>
+
+</div>
+
+<!-- MOBILE: Bottom bar (fixed) -->
+<div id="mobile-bar">
+    <div id="mobile-qr-thumb" onclick="openMobileSheet()" title="ดูตัวอย่าง">
+        <!-- QR thumbnail clone rendered by JS -->
+    </div>
+    <div id="mobile-bar-actions">
+        <select id="download-size-mobile" onchange="syncDownloadSize(this.value)">
+            <option value="512">512 x 512 px</option>
+            <option value="1024">1024 x 1024 px</option>
+            <option value="2048" selected>2048 x 2048 px</option>
+            <option value="4096">4096 x 4096 px</option>
+            <option value="8192">8192 x 8192 px</option>
+        </select>
+        <div id="mobile-bar-btns">
+            <button class="btn" onclick="downloadQR('png')">⬇️ PNG</button>
+            <button class="btn btn-outline" onclick="downloadQR('svg')">⬇️ SVG</button>
+        </div>
+    </div>
+</div>
+
+<!-- MOBILE: Full preview sheet -->
+<div id="mobile-sheet-overlay" onclick="closeMobileSheet()"></div>
+<div id="mobile-sheet">
+    <div id="sheet-header">
+        <div id="mobile-sheet-handle"></div>
+    </div>
+    <div id="sheet-qr-wrap">
+        <div id="sheet-export-wrapper">
+            <div id="sheet-qr-preview-container">
+                <div id="sheet-qr-preview"></div>
+            </div>
+        </div>
+    </div>
+    <button class="btn btn-outline" onclick="closeMobileSheet()" style="margin-top: 4px;">ปิด</button>
+</div>
+
+<script>
+    // --- ธีม (Theme Management) ---
+    const themeBtn = document.getElementById('theme-toggle');
+    
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark-mode');
+        themeBtn.innerHTML = '☀️ Light';
+    }
+
+    function toggleTheme() {
+        document.body.classList.toggle('dark-mode');
+        if (document.body.classList.contains('dark-mode')) {
+            localStorage.setItem('theme', 'dark');
+            themeBtn.innerHTML = '☀️ Light';
+        } else {
+            localStorage.setItem('theme', 'light');
+            themeBtn.innerHTML = '🌙 Dark';
+        }
+    }
+
+    // --- ส่วนลอจิก QR Code ---
+    let currentTab = 'url';
+    let originalLogoDataUrl = null;
+    let monotoneLogoDataUrl = null;
+    let mapInitialized = false;
+    let map, marker;
+    let gridTimeout; 
+
+    const qrCode = new QRCodeStyling({
+        width: 250, height: 250, margin: 10, type: "svg", 
+        data: "https://www.google.com",
+        imageOptions: { crossOrigin: "anonymous", margin: 10, imageSize: 0.2 }, 
+        qrOptions: { errorCorrectionLevel: 'H' } 
+    });
+    qrCode.append(document.getElementById("qr-preview"));
+
+    // Mobile: separate small QR instances for thumb and sheet
+    const qrThumb = new QRCodeStyling({ width: 56, height: 56, margin: 2, type: "svg", data: "https://www.google.com", qrOptions: { errorCorrectionLevel: 'H' } });
+    qrThumb.append(document.getElementById("mobile-qr-thumb"));
+
+    const qrSheet = new QRCodeStyling({ width: 220, height: 220, margin: 8, type: "svg", data: "https://www.google.com", imageOptions: { crossOrigin: "anonymous", margin: 8, imageSize: 0.2 }, qrOptions: { errorCorrectionLevel: 'H' } });
+    qrSheet.append(document.getElementById("sheet-qr-preview"));
+
+    function openMobileSheet() {
+        document.getElementById('mobile-sheet-overlay').classList.add('open');
+        document.getElementById('mobile-sheet').classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeMobileSheet() {
+        document.getElementById('mobile-sheet-overlay').classList.remove('open');
+        document.getElementById('mobile-sheet').classList.remove('open');
+        document.body.style.overflow = '';
+    }
+    function syncDownloadSize(val) {
+        document.getElementById('download-size').value = val;
+    }
+
+    async function pasteFromClipboard() {
+        try {
+            const text = await navigator.clipboard.readText();
+            document.getElementById('input-url').value = text;
+            updateQR();
+        } catch (err) {
+            alert('เบราว์เซอร์ไม่สามารถเข้าถึงข้อมูล Clipboard ได้ กรุณากดอนุญาต หรือใช้ Ctrl+V ครับ');
+        }
+    }
+
+    function getVCardData() { 
+        const fname = document.getElementById("vc-fname").value; const lname = document.getElementById("vc-lname").value;
+        const phone = document.getElementById("vc-phone").value; const email = document.getElementById("vc-email").value;
+        const org = document.getElementById("vc-org").value;
+        return `BEGIN:VCARD\nVERSION:3.0\nN:${lname};${fname};;;\nFN:${fname} ${lname}\nORG:${org}\nTEL;TYPE=CELL:${phone}\nEMAIL:${email}\nEND:VCARD`;
+    }
+    function escapeWifi(str) {
+        // Escape special characters per Wi-Fi QR spec: \ ; , " :
+        return str.replace(/\\/g, '\\\\')
+                  .replace(/;/g, '\\;')
+                  .replace(/,/g, '\\,')
+                  .replace(/"/g, '\\"')
+                  .replace(/:/g, '\\:');
+    }
+    function getWifiData() { 
+        const ssid = escapeWifi(document.getElementById("wifi-ssid").value);
+        const pass = escapeWifi(document.getElementById("wifi-pass").value);
+        const type = document.getElementById("wifi-type").value;
+        const hidden = document.getElementById("wifi-hidden").checked ? "true" : "false";
+        return `WIFI:T:${type};S:${ssid};P:${pass};H:${hidden};;`;
+    }
+    function getEmailData() { 
+        return `mailto:${document.getElementById("em-to").value}?subject=${encodeURIComponent(document.getElementById("em-sub").value)}&body=${encodeURIComponent(document.getElementById("em-body").value)}`;
+    }
+
+    function showGridOverlay(marginVal) {
+        const overlay = document.getElementById('grid-overlay');
+        overlay.style.top = marginVal + 'px';
+        overlay.style.left = marginVal + 'px';
+        overlay.style.width = `calc(100% - ${marginVal * 2}px)`;
+        overlay.style.height = `calc(100% - ${marginVal * 2}px)`;
+        overlay.classList.add('show');
+        clearTimeout(gridTimeout);
+        gridTimeout = setTimeout(() => { overlay.classList.remove('show'); }, 2000);
+    }
+
+    // ── UTF-8 / Thai QR fix ─────────────────────────────────────────
+    // qr-code-styling v1.5.0 ใช้ library ภายในที่ encode string เป็น
+    // ISO-8859-1 (Latin-1) ทำให้อักษรไทย/Unicode เสีย
+    // Fix: แปลง JS string → UTF-8 byte array → binary string (each char = 1 byte)
+    // ซึ่ง QR Byte mode จะเก็บ raw bytes ได้ถูกต้อง และ iOS/Android อ่านออก
+    function toUtf8BinaryString(str) {
+        const bytes = new TextEncoder().encode(str); // Uint8Array of UTF-8 bytes
+        return Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+    }
+
+    function prepareQRData(str) {
+        // ถ้าเป็น URL: ส่งตรงๆ (already ASCII-safe)
+        if (/^https?:\/\//i.test(str) || /^(mailto:|tel:|geo:|ftp:)/i.test(str)) return str;
+        // ถ้ามีอักษรนอก ASCII: convert เป็น UTF-8 binary string
+        const needsConvert = Array.from(str).some(c => c.codePointAt(0) > 127);
+        return needsConvert ? toUtf8BinaryString(str) : str;
+    }
+
+    function updateQR() {
+        let qrData = "";
+        if (currentTab === 'url') {
+            const val = document.getElementById("input-url").value.trim();
+            qrData = val !== "" ? prepareQRData(val) : "https://www.google.com";
+        }
+        else if (currentTab === 'vcard') qrData = prepareQRData(getVCardData());
+        else if (currentTab === 'wifi') qrData = getWifiData();
+        else if (currentTab === 'email') qrData = getEmailData();
+        else if (currentTab === 'geo') {
+            const lat = document.getElementById("geo-lat").value;
+            const lng = document.getElementById("geo-lng").value;
+            const provider = document.querySelector('input[name="map-provider"]:checked')?.value || 'google';
+            if (provider === 'google') {
+                // Google Maps URL with explicit pin marker — works on Android & iOS
+                qrData = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+            } else {
+                // Apple Maps URI — iOS will open Apple Maps directly
+                qrData = `https://maps.apple.com/?ll=${lat},${lng}&q=พิกัด`;
+            }
+        }
+
+        const isTransparent = document.getElementById("bg-transparent").checked;
+        const bgColor = isTransparent ? "rgba(255,255,255,0)" : document.getElementById("color-bg").value;
+        const dotColor = document.getElementById("color-dots").value;
+        
+        const marginPercent = parseInt(document.getElementById("qr-margin").value);
+        document.getElementById("margin-label").innerText = marginPercent; 
+        const previewMarginPx = (250 * marginPercent) / 100; 
+
+        const logoSizePercent = parseInt(document.getElementById("logo-size").value);
+        document.getElementById("logo-size-label").innerText = logoSizePercent;
+        const logoSizeDecimal = logoSizePercent / 100;
+
+        const logoGapPercent = parseInt(document.getElementById("logo-gap").value);
+        document.getElementById("logo-gap-label").innerText = logoGapPercent;
+        const previewLogoGapPx = (250 * logoGapPercent) / 100;
+
+        let activeLogo = document.getElementById("logo-monotone").checked && monotoneLogoDataUrl ? monotoneLogoDataUrl : originalLogoDataUrl;
+
+        qrCode.update({
+            data: qrData, 
+            margin: previewMarginPx,
+            qrOptions: { errorCorrectionLevel: 'H' }, 
+            dotsOptions: { color: dotColor, type: document.getElementById("shape-dots").value },
+            cornersSquareOptions: { color: dotColor, type: document.getElementById("shape-eye-frame").value },
+            cornersDotOptions: { color: dotColor, type: document.getElementById("shape-eye-ball").value },
+            backgroundOptions: { color: bgColor },
+            image: activeLogo || "",
+            imageOptions: { 
+                crossOrigin: "anonymous", 
+                imageSize: logoSizeDecimal,
+                margin: previewLogoGapPx
+            }
+        });
+
+        showGridOverlay(previewMarginPx);
+
+        // Sync mobile QR instances (thumb + sheet)
+        const mobileUpdate = {
+            data: qrData,
+            dotsOptions: { color: dotColor, type: document.getElementById("shape-dots").value },
+            cornersSquareOptions: { color: dotColor, type: document.getElementById("shape-eye-frame").value },
+            cornersDotOptions: { color: dotColor, type: document.getElementById("shape-eye-ball").value },
+            backgroundOptions: { color: bgColor },
+            image: activeLogo || "",
+        };
+        qrThumb.update({ ...mobileUpdate, width: 56, height: 56, margin: 2, imageOptions: { crossOrigin: "anonymous", imageSize: 0.2, margin: 1 } });
+        qrSheet.update({ ...mobileUpdate, width: 220, height: 220, margin: previewMarginPx * 0.88, imageOptions: { crossOrigin: "anonymous", imageSize: logoSizeDecimal, margin: previewLogoGapPx * 0.88 } });
+
+        // Sync sheet wrapper background
+        const sheetWrapper = document.getElementById('sheet-export-wrapper');
+        if (sheetWrapper) {
+            sheetWrapper.style.background = isTransparent ? 'transparent' : bgColor;
+            sheetWrapper.style.boxShadow = isTransparent ? 'none' : 'var(--shadow)';
+        }
+
+        const exportWrapper = document.getElementById('export-wrapper');
+        if (isTransparent) {
+            exportWrapper.style.background = 'transparent';
+            exportWrapper.style.boxShadow = 'none';
+            exportWrapper.style.border = 'none';
+        } else {
+            exportWrapper.style.background = bgColor;
+            exportWrapper.style.boxShadow = 'var(--shadow)';
+            const isDark = document.body.classList.contains('dark-mode');
+            exportWrapper.style.border = (isDark && bgColor.toLowerCase() === '#ffffff') ? '1px solid var(--border)' : 'none';
+        }
+    }
+
+    function saveToHistory() {
+        const data = qrCode._options.data;
+        if (currentTab === 'url' && document.getElementById("input-url").value.trim() === "") return;
+        
+        let history = JSON.parse(localStorage.getItem('qrHistory') || '[]');
+        if (history.length > 0 && history[0].data === data) return; 
+
+        history.unshift({ data: data, type: currentTab, timestamp: new Date().toLocaleString('th-TH') });
+        if (history.length > 20) history.pop(); 
+        
+        localStorage.setItem('qrHistory', JSON.stringify(history));
+        renderHistory();
+    }
+
+    function renderHistory() {
+        const history = JSON.parse(localStorage.getItem('qrHistory') || '[]');
+        const container = document.getElementById('history-list');
+        if (history.length === 0) {
+            container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 20px;">ยังไม่มีประวัติการสร้าง</p>';
+            return;
+        }
+        container.innerHTML = history.map((item, index) => `
+            <div class="history-item">
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(item.data)}">
+                        <strong style="color: var(--primary);">${item.type.toUpperCase()}</strong>: <span style="color: var(--text);">${escapeHtml(getHistoryLabel(item))}</span>
+                    </div>
+                    <div style="color: var(--text-muted); font-size: 0.75rem;">${item.timestamp}</div>
+                </div>
+                <button onclick="restoreHistory(${index})" class="btn btn-outline" style="width: auto; padding: 4px 10px; font-size: 0.75rem; margin: 0; border-radius: 6px; flex-shrink: 0;">เรียกคืน</button>
+            </div>
+        `).join('');
+    }
+
+    function getHistoryLabel(item) {
+        try {
+            if (item.type === 'vcard') {
+                const fnMatch = item.data.match(/FN:([^\n\r]+)/);
+                const telMatch = item.data.match(/TEL[^:]*:([^\n\r]+)/);
+                const name = fnMatch ? fnMatch[1].trim() : '';
+                const tel = telMatch ? telMatch[1].trim() : '';
+                return name ? `${name}${tel ? ' · ' + tel : ''}` : item.data;
+            }
+            if (item.type === 'wifi') {
+                const ssidMatch = item.data.match(/S:([^;]+)/);
+                return ssidMatch ? `SSID: ${ssidMatch[1]}` : item.data;
+            }
+            if (item.type === 'email') {
+                const toMatch = item.data.match(/mailto:([^?]+)/);
+                return toMatch ? toMatch[1] : item.data;
+            }
+            if (item.type === 'geo') {
+                // Handle both new URL format and legacy geo: URI
+                const googleMatch = item.data.match(/query=([^&]+)/);
+                const appleMatch = item.data.match(/ll=([^&]+)/);
+                if (googleMatch) return `📍 ${googleMatch[1]} (Google Maps)`;
+                if (appleMatch) return `📍 ${appleMatch[1]} (Apple Maps)`;
+                return item.data.replace('geo:', '📍 ');
+            }
+        } catch(e) {}
+        return item.data;
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function clearHistory() {
+        if(confirm('ต้องการลบประวัติการสร้างทั้งหมดใช่หรือไม่?')) {
+            localStorage.removeItem('qrHistory');
+            renderHistory();
+        }
+    }
+
+    function restoreHistory(index) {
+        const history = JSON.parse(localStorage.getItem('qrHistory') || '[]');
+        const item = history[index];
+        if (!item) return;
+
+        const tabType = item.type;
+        // Find the tab button for this type and activate it
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabLabels = ['url','vcard','wifi','email','geo'];
+        const btnIndex = tabLabels.indexOf(tabType);
+        const targetBtn = btnIndex >= 0 ? tabBtns[btnIndex] : tabBtns[0];
+
+        switchTab(tabType, targetBtn);
+
+        // Restore data into the correct field
+        if (tabType === 'url') {
+            document.getElementById('input-url').value = item.data;
+        }
+        // For other types (vcard, wifi, email, geo), data is composite format;
+        // best effort: switch to correct tab and let user see the type
+        updateQR();
+    }
+    renderHistory(); 
+
+    document.getElementById('logo-upload').addEventListener('change', function(e) {
+        if (!e.target.files[0]) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            originalLogoDataUrl = event.target.result;
+            generateMonotoneLogo(originalLogoDataUrl, (monotoneUrl) => {
+                monotoneLogoDataUrl = monotoneUrl; applyLogo();
+            });
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    });
+    function applyLogo() { updateQR(); }
+    function clearLogo() { document.getElementById('logo-upload').value = ""; originalLogoDataUrl = null; monotoneLogoDataUrl = null; updateQR(); }
+
+    function generateMonotoneLogo(imgSrc, callback) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height;
+            const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const avg = (imgData.data[i] * 0.3) + (imgData.data[i+1] * 0.59) + (imgData.data[i+2] * 0.11);
+                imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = avg;
+            }
+            ctx.putImageData(imgData, 0, 0); callback(canvas.toDataURL());
+        };
+        img.src = imgSrc;
+    }
+
+    function switchTab(tabId, btn) {
+        currentTab = tabId;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+
+        if (tabId === 'geo' && !mapInitialized) initMap();
+        else if (tabId === 'geo') setTimeout(() => { map.invalidateSize(); }, 100);
+        updateQR();
+    }
+
+    function initMap() {
+        const initLat = 14.9799; const initLng = 102.0978;
+        map = L.map('map-container').setView([initLat, initLng], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        marker = L.marker([initLat, initLng]).addTo(map);
+        document.getElementById("geo-lat").value = initLat; document.getElementById("geo-lng").value = initLng;
+
+        function setCoords(lat, lng) {
+            marker.setLatLng([lat, lng]);
+            document.getElementById("geo-lat").value = lat.toFixed(6); document.getElementById("geo-lng").value = lng.toFixed(6);
+            updateQR();
+        }
+
+        map.on('click', (e) => setCoords(e.latlng.lat, e.latlng.lng));
+        L.Control.geocoder({ defaultMarkGeocode: false }).on('markgeocode', function(e) {
+            map.fitBounds(e.geocode.bbox); setCoords(e.geocode.center.lat, e.geocode.center.lng);
+        }).addTo(map);
+        setTimeout(() => { map.invalidateSize(); }, 200); mapInitialized = true;
+    }
+
+    function getFilename() {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const sec = String(now.getSeconds()).padStart(2, '0');
+        return `qr_${yyyy}${mm}${dd}_${hh}${min}${sec}`;
+    }
+
+    function downloadQR(format) {
+        const marginPercent = parseInt(document.getElementById("qr-margin").value);
+        const targetSize = parseInt(document.getElementById("download-size").value);
+        
+        const exportMarginPx = (targetSize * marginPercent) / 100;
+        
+        const logoSizeDecimal = parseInt(document.getElementById("logo-size").value) / 100;
+        const logoGapPercent = parseInt(document.getElementById("logo-gap").value);
+        const exportLogoGapPx = (targetSize * logoGapPercent) / 100;
+
+        saveToHistory();
+
+        if (format === 'svg') {
+            saveToHistory();
+            qrCode.download({ extension: "svg", name: getFilename() });
+            return;
+        }
+
+        qrCode.update({ 
+            width: targetSize, 
+            height: targetSize, 
+            margin: exportMarginPx,
+            imageOptions: {
+                crossOrigin: "anonymous",
+                imageSize: logoSizeDecimal,
+                margin: exportLogoGapPx 
+            }
+        });
+        
+        qrCode.download({ extension: "png", name: getFilename() }).then(() => {
+            const previewMarginPx = (250 * marginPercent) / 100;
+            const previewLogoGapPx = (250 * logoGapPercent) / 100;
+            
+            qrCode.update({ 
+                width: 250, 
+                height: 250, 
+                margin: previewMarginPx,
+                imageOptions: {
+                    crossOrigin: "anonymous",
+                    imageSize: logoSizeDecimal,
+                    margin: previewLogoGapPx 
+                }
+            });
+        });
+    }
+
+    updateQR();
+</script>
+
+</body>
+</html>

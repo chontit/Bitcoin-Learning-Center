@@ -1,6 +1,16 @@
 <?php
 $page_title = "Bitcoin 101 — รู้จักบิตคอยน์ก่อนใคร";
-$site_url   = "/";
+
+// ── ระบบ Auto-detect URL & Path อัตโนมัติ ──
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'];
+$current_dir = dirname($_SERVER['SCRIPT_NAME']);
+// จัดการเครื่องหมาย / ไม่ให้ซ้ำซ้อน
+$current_dir = ($current_dir == DIRECTORY_SEPARATOR || $current_dir == '/') ? '' : $current_dir;
+
+// สรุปเป็น Base URL เช่น http://localhost/bitcoin หรือ https://learning.chontit.win
+$site_url = rtrim($protocol . $host . $current_dir, '/');
+
 // Static fallback data (JS will fetch live)
 $uptime_pct    = "99.9881";
 $node_count    = "23,527";
@@ -18,6 +28,7 @@ $max_supply    = "20,999,999.9769";
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+
 /* ════════════════════════════════════════
    BITCOIN 101 — v3
    Thai: Prompt (body) / Kanit (display)
@@ -610,7 +621,7 @@ footer{border-top:1px solid var(--bd);padding:2.5rem 1.5rem;text-align:center;po
     <div class="th"><div class="dot dr"></div><div class="dot dy"></div><div class="dot dg"></div><span class="ttl">bitcoin supply monitor — realtime</span></div>
     <div class="tb">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem">
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:.75rem;color:var(--tx3)">Circulating Supply (BTC) — <a href="bitcoin/issuance_simulator.php" target="_blank" style="color:var(--btc);text-decoration:none">Issuance Simulator ↗</a></span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:.75rem;color:var(--tx3)">Circulating Supply (BTC) — <a href="<?= $site_url ?>/bitcoin/issuance_simulator.php" target="_blank" style="color:var(--btc);text-decoration:none">Issuance Simulator ↗</a></span>
         <span style="font-family:'Kanit',sans-serif;font-weight:700;font-size:1.5rem;color:var(--btc)" id="pct-big"><?= $pct_issued ?>%</span>
       </div>
       <div class="sup-t"><div class="sup-f" id="sup-bar" style="width:<?= $pct_issued ?>%"></div></div>
@@ -698,7 +709,7 @@ footer{border-top:1px solid var(--bd);padding:2.5rem 1.5rem;text-align:center;po
         กดปุ่ม <strong style="color:var(--tx)">+ เพิ่มบล็อก</strong> เพื่อสร้างธุรกรรม — จากนั้นกดปุ่ม 📋 ที่มุมบล็อกเพื่อ Copy ข้อมูลดิบ
         แล้วนำไปพิสูจน์เองที่
         <a href="https://emn178.github.io/online-tools/sha256.html" target="_blank" style="color:var(--btc)">SHA-256 Online Tool ↗</a>
-        หรือ <a href="bitcoin/hashing.php" target="_blank" style="color:var(--btc)">learning.chontit.win/hashing ↗</a>
+        หรือ <a href="<?= $site_url ?>/bitcoin/hashing.php" target="_blank" style="color:var(--btc)">learning.chontit.win/hashing ↗</a>
       </p>
       <div id="chainWrap" class="chainw"></div>
       <div class="irow" style="margin-top:1rem">
@@ -1035,7 +1046,7 @@ footer{border-top:1px solid var(--bd);padding:2.5rem 1.5rem;text-align:center;po
       ['11','Lightning Network','Payment Channel L2','lightning.php'],
       ['12','Self-Custody Guide','Not your keys guide','self-custody.php'],
     ] as [$n,$t,$d,$f]): ?>
-    <a href="<?=$site_url?>/bitcoin/<?=$f?>" class="moda" target="_blank">
+    <a href="<?= $site_url . '/bitcoin/' . $f ?>" class="moda" target="_blank">
       <span class="modn"><?=$n?></span>
       <span class="modt"><?=htmlspecialchars($t)?></span>
       <span class="modd"><?=htmlspecialchars($d)?></span>
